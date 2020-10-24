@@ -12,6 +12,7 @@ export class ContentScript extends Component {
     this.iceCandidates = [];
     this.recorder = undefined;
     this.recordedData = undefined;
+    this.streamStatus = undefined;
   }
 
   readAsArrayBuffer = function(blob) {
@@ -66,13 +67,16 @@ export class ContentScript extends Component {
 
   handleTracks = (e) => {
     let stream = e.streams[0];
+    this.streamStatus = stream.active;
     e.track.onmute = () => {
       console.log('Track muted');
       if(this.recorder.state !== 'inactive')
       {
-        console.log('this is called')
         this.recorder.stop();
+      }
         let blob = new Blob(this.recordedData);
+        this.recordedData = undefined;
+        this.recorder = undefined;
         let decoder = new Decoder()
         let reader = new Reader();
         this.readAsArrayBuffer(blob).then((buffer) => {
@@ -94,31 +98,27 @@ export class ContentScript extends Component {
           setTimeout(() => {
             document.body.removeChild(a);
             window.URL.revokeObjectURL(vidURL);
+            if(this.streamStatus === false)
+            {
+              this.contentPeer.close();
+              this.contentPeer = undefined;
+              this.port.postMessage({ message: "Close-RTC-Connection" })
+              window.postMessage("Stream Stopped", "*");
+            }
           }, 1000)
         })
         .catch((err) => {
           console.log(`ERROR: ${err}`);
+          alert('Some Error Occurred While Recording Screen');
+          window.postMessage("Stream Stopped", "*");
         })
-      }
-      // else if(this.recorder.state !== 'inactive' && stream.active === true)
-      // {
-      //   this.recorder.pause();
-      // }
-
-    
-      // let finalBlob = new Blob(this.recordedData);
-      // this.readAsArrayBuffer(blob)
-      // .then((buffer) => {
-      //   console.log(buffer);
-      // })
-      // this.recordedData = [];
-      // let fixedData = [];
       
     }
 
     e.track.onunmute = () => {
       console.log('Track unmuted');
       this.seekableVideo(stream);
+      window.postMessage("Stream Started", "*");
     }
   }
 
@@ -136,6 +136,15 @@ export class ContentScript extends Component {
     let offer = await this.contentPeer.createOffer({ offerToReceiveVideo: true });
     await this.contentPeer.setLocalDescription(offer);
     this.port.postMessage({ message: "Content-SDP", sdp: this.contentPeer.localDescription });
+  }
+
+
+  handleMessagesFromApp = (e) => {
+    if(e.data.message === "start" && e.source === window)
+    {
+      window.postMessage("started", "*");
+      this.initiateRTC()
+    }
   }
 
   componentDidMount = () => {
@@ -158,14 +167,16 @@ export class ContentScript extends Component {
         this.iceCandidates.push(msg.candidate);
       }
 
+      if(msg.message === "Stream-Inactive")
+      {
+        this.streamStatus = false;
+      }
+
     })
 
 
 
-    //initiate RTC connection from content script after two second from when the extension loads
-    setTimeout(() => {
-      this.initiateRTC()
-    }, 2000)
+    window.addEventListener("message", this.handleMessagesFromApp)
   }
 
   render = () => {

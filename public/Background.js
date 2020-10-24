@@ -17,6 +17,12 @@ chrome.runtime.onConnect.addListener((port) => {
         {
             iceCandidates.push(msg.candidate);
         }
+
+        if(msg.message === "Close-RTC-Connection")
+        {
+            backgroundPeer.close();
+            backgroundPeer = undefined;
+        }
     })
 
     async function initiateRTC(sdp) {
@@ -39,6 +45,10 @@ chrome.runtime.onConnect.addListener((port) => {
                 }
             })
             .then(async (stream) => {
+                stream.oninactive = () => {
+                    port.postMessage({ message: "Stream-Inactive" })
+                }
+
                 stream.getVideoTracks().forEach((track) => {
                     backgroundPeer.addTrack(track, stream);
                 })
