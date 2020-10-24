@@ -32,7 +32,10 @@ chrome.runtime.onConnect.addListener((port) => {
                         chromeMediaSourceId: streamID,
                         maxWidth: window.screen.width,
                         maxHeight: window.screen.height
-                    }
+                    },
+                    optional: [
+                        { maxFrameRate: 30 }
+                      ]
                 }
             })
             .then(async (stream) => {
